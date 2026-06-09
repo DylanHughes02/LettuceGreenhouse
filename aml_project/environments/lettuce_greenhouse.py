@@ -51,8 +51,8 @@ class LettuceGreenhouse(gym.Env):
         start_day: int = 40,         # start day of simulation
         var_weather: bool = False,    # ALWAYS FALSE when postprocessing
         noise: bool = False,    # whether to add noise to the weather predictions
-        reward_coefs=np.ones(4),    # coefficients for reward function
-        penalty_coefs=np.ones(3)    # coefficients for penalty function
+        reward_coefs=np.ones(2),    # coefficients for reward function
+        penalty_coefs=np.ones(6)    # coefficients for penalty function
         ):
         super(LettuceGreenhouse, self).__init__()
 
@@ -231,9 +231,58 @@ class LettuceGreenhouse(gym.Env):
         """
         return denormalise_array(-np.ones(self.action_space.shape[-1]), self.min_action, self.max_action)
 
-    def reward_function(self, obs, action):
+    def reward_function(self, y, action):
         # TODO: add the reward function
-        return -1
+
+        # State Variables
+        # y[0] = Dry weight (y1 in paper), y[1] = CO2 ppm (y2), y[2] = Temp C (y3)
+        current_weight = y[0]
+        co2_ppm = y[1]
+        temp_c = y[2]
+
+        # Action Variables
+        # action[0] = CO2 dosing, action[1] = Ventilation, action[2] = Heating (all denormalised)
+        co2_dosing = action[0]
+        ventilation = action[1]
+        heating = action[2]
+
+        # Dynamic Constraint Bounds 
+        # These are the optimal ranges for temperature and CO2 concentration in the greenhouse.
+        T_min = 15.0 # Change so it adjust day/night cycle
+        T_max = 20.0
+        CO2_min = 800.0
+        CO2_max = 1000.0
+
+        # Incremental Growth
+        incremental_growth = current_weight - self.prev_yield
+
+        # Climate Constraints (Equation 13) 
+        # These are quadratic penalties for being outside the optimal range of CO2 and temperature, and a small reward for being within the optimal range.
+
+        # Coefficients for the reward function
+        c_r1, c_r_co2_2 = self.reward_coefs
+        c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2 = self.penalty_coefs
+
+        # CO2 Reward/Penalty
+        if co2_ppm < CO2_min:
+            r_co2 = -c_r_co2_1 * (co2_ppm - CO2_min)**2
+        elif co2_ppm > CO2_max:
+            r_co2 = -c_r_co2_1 * (co2_ppm - CO2_max)**2
+        else:
+            r_co2 = c_r_co2_2  # Small reward for staying in bounds
+            
+        # Temperature Penalty
+        if temp_c < T_min:
+            r_T = -c_r_T1 * (temp_c - T_min)**2
+        elif temp_c > T_max:
+            r_T = -c_r_T2 * (temp_c - T_max)**2
+        else:
+            r_T = 0.0
+            
+        # Final Reward (Equation 12)
+        reward = (c_r1 * incremental_growth) + r_co2 + r_T - (c_r_u1 * co2_dosing + c_r_u2 * ventilation + c_r_u3 * heating)
+                 
+        return float(reward)
 
     def constraint_penalty(self, obs):
         """
