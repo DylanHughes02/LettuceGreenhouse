@@ -28,7 +28,7 @@ def create_trajectory_figure(nvars, L, h, c, low_state_constraints, upper_state_
 
     ylabels = [r"Lettuce DM (g/m$^{2}$)", r"CO$_{2, \mathregular{in}}$ (ppm) $\cdot 10^3$", r"T$_{\mathregular{in}}$ ($^\circ$C)", r"RH$_\mathregular{in}$ $(\%)$",\
         r"Sun radiation (W/m$^2$)", r"CO$_{2, \mathregular{out}}$ (ppm) $\cdot 10^3$", r"T$_{\mathregular{out}}$ ($^\circ$C)", r"RH$_\mathregular{out}$ $(\%)$",\
-        r"CO$_{2, \mathregular{supply}}$ (mg/m$^2$/s) $\cdot 10^3$", r"Ventilation rate (mm/s)", r"Heating (W/m$^2$)"]
+        r"CO$_{2, \mathregular{supply}}$ (mg/m$^2$/s) $\cdot 10^3$", r"Ventilation rate (mm/s)", r"Heating (W/m$^2$)", r"rewards (profit) ($\cdot 10^3$)"]
 
     # create figure
     fig = plt.figure(figsize=(18, 12), dpi=120)
