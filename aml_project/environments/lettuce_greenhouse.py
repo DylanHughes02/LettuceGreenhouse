@@ -66,7 +66,7 @@ class LettuceGreenhouse(gym.Env):
         self.obs_high = np.array([300., 1.6, 25., 80.], dtype=np.float32)
 
         # min and max actions
-        self.min_action = np.array([0.,0.,0.], dtype=np.float32)
+        self.min_action = np.array([0.,0.,0.], dtype=np.float32) 
         self.max_action = np.array([1.2
                                     , 7.5
                                     , 150.], dtype=np.float32)
@@ -150,7 +150,7 @@ class LettuceGreenhouse(gym.Env):
 
         self.prev_action = copy(action)
         self.prev_actions[self.timestep-1] += copy(action)
-        self.prev_yield = copy(y[0])
+        self.prev_yield = copy(y[0]) 
 
         info = self.get_info(action)
 
@@ -279,9 +279,14 @@ class LettuceGreenhouse(gym.Env):
         else:
             r_T = 0.0
             
+        self.revenue = float(c_r1 * incremental_growth)
+        self.co2_cost = float(c_r_u1 * co2_dosing)
+        self.heating_cost = float(c_r_u3 * heating)
+        self.penalty = float(r_co2 + r_T - (c_r_u2 * ventilation))
+        
         # Final Reward (Equation 12)
-        reward = (c_r1 * incremental_growth) + r_co2 + r_T - (c_r_u1 * co2_dosing + c_r_u2 * ventilation + c_r_u3 * heating)
-                 
+        reward = self.revenue + r_co2 + r_T - (self.co2_cost + (c_r_u2 * ventilation) + self.heating_cost)
+          
         return float(reward)
 
     def constraint_penalty(self, obs):
