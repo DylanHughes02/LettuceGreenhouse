@@ -206,8 +206,8 @@ def load_disturbances(c, L, h, nd, Np, startDay, weather_data_dir):
     6. **Returns:** Provides the processed and adjusted weather disturbance data suitable for simulation.
 
     """
-    c       = 86400 # amount of seconds in a day
-    nDays   = L/c      # number of days in the simulation L i
+    # use provided c (seconds per day)
+    nDays   = L / c      # number of days in the simulation
     #pdb.set_trace()
     D       = loadmat(weather_data_dir)
     D       = D['d']
@@ -219,14 +219,10 @@ def load_disturbances(c, L, h, nd, Np, startDay, weather_data_dir):
     N0      = int(np.ceil(startDay/dt)) # Start index
 
     if Ns > len(t):
-       print(' ')
-       print('Not enough samples in the data.')
-       print(' ')
+        raise ValueError('Not enough samples in the weather data for the requested simulation length.')
 
-    if Ns > len(t)-N0:
-       print(' ')
-       print('Start simulation too close to end of weather data.')
-       print(' ')
+    if Ns > len(t) - N0:
+        raise ValueError('Start simulation too close to end of weather data.')
 
     # extract only data for current simulation
     # get an array of all the seconds of the start of the simulation
@@ -234,26 +230,31 @@ def load_disturbances(c, L, h, nd, Np, startDay, weather_data_dir):
     #get the difference in time, this is every five minutes 
     t       = t - t[0]
     dt      = statistics.mean(np.diff(t))       # Sample period data [s]
-    if h<dt:
-        #h is the stepsize of the model so the stepsize of the sample should be larger then the stepsize of the model 
-       print(' ') 
-       print('Increase ops.h, sample period too small.')
-       print(' ')
-
-    # new sample period p times the original sample rate
-    p       = int(np.floor(1/(dt/h)))
+    if dt <= 0:
+        raise ValueError('Invalid sample period in weather data (dt <= 0).')
+    if h < dt:
+        # h is the stepsize of the model so the sample period should be smaller than or equal to the model step
+        # fall back to a safe downsample factor of 1 and warn
+        p = 1
+    else:
+        # number of original samples per model step (at least 1)
+        p = max(1, int(np.floor(h / dt)))
     # print()
-    rad     = D[N0:N0+Ns+p*Np,1]          # Outdoor Global radiation [W m^{-2}]
-    tempOut = D[N0:N0+Ns+p*Np,2]          # Outdoor temperature [°C]
-    co2Out  = D[N0:N0+Ns+p*Np,5]          # Outdoor CO2 concentration [ppm]
+    end_idx = N0 + Ns + p * Np
+    if end_idx > D.shape[0]:
+        end_idx = D.shape[0]
+
+    rad     = D[N0:end_idx,1]          # Outdoor Global radiation [W m^{-2}]
+    tempOut = D[N0:end_idx,2]          # Outdoor temperature [°C]
+    co2Out  = D[N0:end_idx,5]          # Outdoor CO2 concentration [ppm]
     co2Out  = co2ppm2dens(tempOut,co2Out) # Outdoor CO2 concentration [kg/m3]
     vapOut  = D[N0:N0+Ns+p*Np,3]          # Outdoor relative humidity [#]
     vapOut  = rh2vaporDens(tempOut,vapOut)# Outdoor humidity [kg/m3]
 
     # model: d(0) = rad, d(1) = co2Out, d(2) = tempOut, d(3) = vapOut
     d0              = np.array([rad[0], co2Out[0], tempOut[0], vapOut[0]])
-    #calculate the amount of samples
-    ns              = int(np.ceil(len(rad)/p))
+    # calculate the amount of samples
+    ns = int(np.ceil(len(rad) / p)) if p > 0 else len(rad)
     d               = np.zeros((nd,ns))
 
     d[0,:]          = d0[0] + signal.resample(rad-d0[0],ns)

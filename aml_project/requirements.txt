@@ -44,3 +44,9 @@ traitlets==5.14.3
 typing_extensions==4.11.0
 wcwidth==0.2.13
 zipp==3.18.2
+
+# Added for experiments
+stable-baselines3
+torch
+pandas
+openpyxl

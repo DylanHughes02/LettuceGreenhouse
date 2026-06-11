@@ -56,6 +56,9 @@ class LettuceGreenhouse(gym.Env):
         ):
         super(LettuceGreenhouse, self).__init__()
 
+        # internal timestep and termination flag
+        self.timestep = 0
+        self.terminated = False
         # action and observation spaces
         self.action_space = spaces.Box(low=-1*np.ones(nu, dtype=np.float32), high=np.ones(nu, dtype=np.float32))
         # observation space is matrix of (4, Np+1), containing Np weather predictions and the current indoor climate observation
@@ -79,6 +82,9 @@ class LettuceGreenhouse(gym.Env):
         self.var_weather = var_weather
         self.weather_data_dir = weather_data_dir
 
+        self.timestep = 0
+        self.terminated = False
+
         # Number of timestep into prediction horizon
         self.Np = Np
         self.ny = ny
@@ -94,11 +100,16 @@ class LettuceGreenhouse(gym.Env):
         self.start_day: int = start_day    # 
 
         # load weather predictions [currently deterministic]
-        self.d = load_disturbances(c, self.L, self.h , self.nd, self.Np, self.start_day, weather_data_dir)
+        self.d = load_disturbances(self.c, self.L, self.h , self.nd, self.Np, self.start_day, weather_data_dir)
 
         self.prev_actions = np.zeros((self.N, self.action_space.shape[-1]))
         self.reward_coefs = reward_coefs
         self.penalty_coefs = penalty_coefs
+        # validate coefficient lengths to fail fast with clear error
+        if len(self.reward_coefs) != 2:
+            raise ValueError("reward_coefs must be length 2: [c_r1, c_r_co2_2]")
+        if len(self.penalty_coefs) != 6:
+            raise ValueError("penalty_coefs must be length 6: [c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2]")
 
     def seed(self, seed):
         self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -196,11 +207,14 @@ class LettuceGreenhouse(gym.Env):
                 - "penalty": A list of penalties for each timestep.
                 - "timestep": The current timestep.
         """
-        self.revenues[self.timestep-1] += self.revenue
-        self.co2_costs[self.timestep-1] += self.co2_cost
-        self.heating_costs[self.timestep-1] += self.heating_cost
-        self.profits[self.timestep-1] += self.revenue - self.co2_cost - self.heating_cost
-        self.penalties[self.timestep-1] += self.penalty
+        # Only record step-wise history if we have advanced at least one step
+        if self.timestep > 0:
+            idx = self.timestep - 1
+            self.revenues[idx] += self.revenue
+            self.co2_costs[idx] += self.co2_cost
+            self.heating_costs[idx] += self.heating_cost
+            self.profits[idx] += self.revenue - self.co2_cost - self.heating_cost
+            self.penalties[idx] += self.penalty
 
         info = {
             "action": action,
@@ -245,13 +259,13 @@ class LettuceGreenhouse(gym.Env):
         co2_dosing = action[0]
         ventilation = action[1]
         heating = action[2]
-
+        radiation = self.d[self.timestep-1][0]
         # Dynamic Constraint Bounds 
         # These are the optimal ranges for temperature and CO2 concentration in the greenhouse.
-        T_min = 15.0 # Change so it adjust day/night cycle
-        T_max = 20.0
-        CO2_min = 800.0
-        CO2_max = 1000.0
+        T_min = 10.0 if radiation < 10 else 15.0  # Change so it adjust day/night cycle
+        T_max = 15.0 if radiation < 10 else 20.0
+        CO2_min = 0.8
+        CO2_max = 1.0
 
         # Incremental Growth
         incremental_growth = current_weight - self.prev_yield
@@ -270,7 +284,7 @@ class LettuceGreenhouse(gym.Env):
             r_co2 = -c_r_co2_1 * (co2_ppm - CO2_max)**2
         else:
             r_co2 = c_r_co2_2  # Small reward for staying in bounds
-            
+        print(f"co2_ppm: {co2_ppm}, r_co2: {r_co2}")
         # Temperature Penalty
         if temp_c < T_min:
             r_T = -c_r_T1 * (temp_c - T_min)**2
@@ -283,10 +297,11 @@ class LettuceGreenhouse(gym.Env):
         self.co2_cost = float(c_r_u1 * co2_dosing)
         self.heating_cost = float(c_r_u3 * heating)
         self.penalty = float(r_co2 + r_T - (c_r_u2 * ventilation))
-        
+
         # Final Reward (Equation 12)
         reward = self.revenue + r_co2 + r_T - (self.co2_cost + (c_r_u2 * ventilation) + self.heating_cost)
-          
+
+        print(f"reward: {reward}, incremental_growth: {incremental_growth}, co2_reward: {r_co2}, temp_penalty: {r_T}, co2_cost: {self.co2_cost}, ventilation_cost: {c_r_u2 * ventilation}, heating_cost: {self.heating_cost}")
         return float(reward)
 
     def constraint_penalty(self, obs):
@@ -337,9 +352,21 @@ class LettuceGreenhouse(gym.Env):
         self.revenues = np.zeros((self.N, ))
         self.co2_costs = np.zeros((self.N, ))
         self.heating_costs = np.zeros((self.N, ))
-        self.penalties = np.zeros((self.N, len(self.penalty_coefs)))
+        # penalties stored as scalar per timestep
+        self.penalties = np.zeros((self.N, ))
 
-        return self.get_obs(y), self.get_info(self.prev_action)
+        # initial info (do not record into history arrays yet)
+        info = {
+            "action": self.prev_action,
+            "profit": self.profits,
+            "revenue": self.revenues,
+            "co2_cost": self.co2_costs,
+            "heating_cost": self.heating_costs,
+            "penalty": self.penalties,
+            "timestep": self.timestep
+        }
+
+        return self.get_obs(y), info
 
     def close(self):
         return
@@ -504,8 +531,9 @@ if __name__ == "__main__":
     # 3) energy supply by heating the system u_q in [W.m^-2]
     u = np.zeros((nu, N+1))
     weather_direction = 'environments/weather/outdoorWeatherWurGlas2014.mat'
-    penalty_coefs= np.array([0.5, 0.5, 0.5])
-    reward_coefs = np.array([1, 0.1, .01, .001])
+    # match expected lengths: reward_coefs (2,), penalty_coefs (6,)
+    penalty_coefs= np.array([4.5360e-4, 0.0075, 8.5725e-4, 0.1, 0.001, 0.0005])
+    reward_coefs = np.array([1.0, 0.0005])
 
     env = LettuceGreenhouse(weather_direction, penalty_coefs=penalty_coefs, reward_coefs=reward_coefs)
     env.reset()
