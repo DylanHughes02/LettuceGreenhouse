@@ -52,7 +52,7 @@ class LettuceGreenhouse(gym.Env):
         var_weather: bool = False,    # ALWAYS FALSE when postprocessing
         noise: bool = False,    # whether to add noise to the weather predictions
         reward_coefs=np.ones(2),    # coefficients for reward function
-        penalty_coefs=np.ones(6)    # coefficients for penalty function
+        penalty_coefs=np.ones(7)    # coefficients for penalty function
         ):
         super(LettuceGreenhouse, self).__init__()
 
@@ -108,8 +108,8 @@ class LettuceGreenhouse(gym.Env):
         # validate coefficient lengths to fail fast with clear error
         if len(self.reward_coefs) != 2:
             raise ValueError("reward_coefs must be length 2: [c_r1, c_r_co2_2]")
-        if len(self.penalty_coefs) != 6:
-            raise ValueError("penalty_coefs must be length 6: [c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2]")
+        if len(self.penalty_coefs) != 7:
+            raise ValueError("penalty_coefs must be length 7: [c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2, c_r_RH]")
 
     def seed(self, seed):
         self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -253,6 +253,7 @@ class LettuceGreenhouse(gym.Env):
         current_weight = y[0]
         co2_ppm = y[1]
         temp_c = y[2]
+        RH = y[3]
 
         # Action Variables
         # action[0] = CO2 dosing, action[1] = Ventilation, action[2] = Heating (all denormalised)
@@ -266,6 +267,8 @@ class LettuceGreenhouse(gym.Env):
         T_max = 15.0 if radiation < 10 else 20.0
         CO2_min = 0.8
         CO2_max = 1.0
+        RH_max = 70
+        RH_min = 50
 
         # Incremental Growth
         incremental_growth = current_weight - self.prev_yield
@@ -275,7 +278,7 @@ class LettuceGreenhouse(gym.Env):
 
         # Coefficients for the reward function
         c_r1, c_r_co2_2 = self.reward_coefs
-        c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2 = self.penalty_coefs
+        c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2, c_r_RH = self.penalty_coefs
 
         # CO2 Reward/Penalty
         if co2_ppm < CO2_min:
@@ -292,17 +295,26 @@ class LettuceGreenhouse(gym.Env):
             r_T = -c_r_T2 * (temp_c - T_max)**2
         else:
             r_T = 0.0
-            
+        
+        #Relative Humidity penalty
+    
+        if RH < RH_min:
+            r_RH = -c_r_RH * (RH - RH_min)**2
+        elif RH > RH_max:
+            r_RH = -c_r_RH * (RH - RH_max)**2
+        else:
+            r_RH = 0.0
+
         self.revenue = float(c_r1 * incremental_growth)
         self.co2_cost = float(c_r_u1 * co2_dosing)
         self.heating_cost = float(c_r_u3 * heating)
-        self.penalty = float(r_co2 + r_T - (c_r_u2 * ventilation))
+        self.penalty = float(r_co2 + r_T + r_RH - (c_r_u2 * ventilation))
 
         # Final Reward (Equation 12)
-        reward = self.revenue + r_co2 + r_T - (self.co2_cost + (c_r_u2 * ventilation) + self.heating_cost)
+        reward = self.revenue + r_co2 + r_T + r_RH - (self.co2_cost + (c_r_u2 * ventilation) + self.heating_cost)
 
-        print(f"reward: {reward}, incremental_growth: {incremental_growth}, co2_reward: {r_co2}, temp_penalty: {r_T}, co2_cost: {self.co2_cost}, ventilation_cost: {c_r_u2 * ventilation}, heating_cost: {self.heating_cost}")
-        return float(reward)
+        #print(f"reward: {reward}, incremental_growth: {incremental_growth}, co2_reward: {r_co2}, "f"temp_penalty: {r_T}, RH_penalty: {r_RH}, co2_cost: {self.co2_cost}, "f"ventilation_cost: {c_r_u2 * ventilation}, heating_cost: {self.heating_cost}")
+        return reward
 
     def constraint_penalty(self, obs):
         """
@@ -532,7 +544,7 @@ if __name__ == "__main__":
     u = np.zeros((nu, N+1))
     weather_direction = 'environments/weather/outdoorWeatherWurGlas2014.mat'
     # match expected lengths: reward_coefs (2,), penalty_coefs (6,)
-    penalty_coefs= np.array([4.5360e-4, 0.0075, 8.5725e-4, 0.1, 0.001, 0.0005])
+    penalty_coefs= np.array([4.5360e-4, 0.0075, 8.5725e-4, 0.1, 0.001, 0.0005, 0])
     reward_coefs = np.array([1.0, 0.0005])
 
     env = LettuceGreenhouse(weather_direction, penalty_coefs=penalty_coefs, reward_coefs=reward_coefs)
