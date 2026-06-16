@@ -52,7 +52,7 @@ class LettuceGreenhouse(gym.Env):
         var_weather: bool = False,    # ALWAYS FALSE when postprocessing
         noise: bool = False,    # whether to add noise to the weather predictions
         reward_coefs=np.ones(2),    # coefficients for reward function
-        penalty_coefs=np.ones(7)    # coefficients for penalty function
+        penalty_coefs=np.ones(9)    # coefficients for penalty function
         ):
         super(LettuceGreenhouse, self).__init__()
 
@@ -65,8 +65,8 @@ class LettuceGreenhouse(gym.Env):
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(ny + nd*Np,))
 
         # min and max measurements of the environment
-        self.obs_low = np.array([0., 0., 10., 0.], dtype=np.float32)
-        self.obs_high = np.array([300., 1.6, 25., 80.], dtype=np.float32)
+        self.obs_low = np.array([0., 0.8, 15, 0], dtype=np.float32)
+        self.obs_high = np.array([300., 1.6, 20., 70.], dtype=np.float32)
 
         # min and max actions
         self.min_action = np.array([0.,0.,0.], dtype=np.float32) 
@@ -108,8 +108,8 @@ class LettuceGreenhouse(gym.Env):
         # validate coefficient lengths to fail fast with clear error
         if len(self.reward_coefs) != 2:
             raise ValueError("reward_coefs must be length 2: [c_r1, c_r_co2_2]")
-        if len(self.penalty_coefs) != 7:
-            raise ValueError("penalty_coefs must be length 7: [c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2, c_r_RH]")
+        if len(self.penalty_coefs) != 9:
+            raise ValueError("penalty_coefs must be length 9: [c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2, c_r_RH, c_r_co2_vent, c_coact]")
 
     def seed(self, seed):
         self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -266,9 +266,9 @@ class LettuceGreenhouse(gym.Env):
         T_min = 10.0 if radiation < 10 else 15.0  # Change so it adjust day/night cycle
         T_max = 15.0 if radiation < 10 else 20.0
         CO2_min = 0.8
-        CO2_max = 1.0
+        CO2_max = 1.6
         RH_max = 70
-        RH_min = 50
+        RH_min = 0
 
         # Incremental Growth
         incremental_growth = current_weight - self.prev_yield
@@ -278,7 +278,7 @@ class LettuceGreenhouse(gym.Env):
 
         # Coefficients for the reward function
         c_r1, c_r_co2_2 = self.reward_coefs
-        c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2, c_r_RH = self.penalty_coefs
+        c_r_u1, c_r_u2, c_r_u3, c_r_co2_1, c_r_T1, c_r_T2, c_r_RH, c_r_co2_vent, c_coact = self.penalty_coefs
 
         # CO2 Reward/Penalty
         if co2_ppm < CO2_min:
@@ -287,7 +287,7 @@ class LettuceGreenhouse(gym.Env):
             r_co2 = -c_r_co2_1 * (co2_ppm - CO2_max)**2
         else:
             r_co2 = c_r_co2_2  # Small reward for staying in bounds
-        print(f"co2_ppm: {co2_ppm}, r_co2: {r_co2}")
+        #print(f"co2_ppm: {co2_ppm}, r_co2: {r_co2}")
         # Temperature Penalty
         if temp_c < T_min:
             r_T = -c_r_T1 * (temp_c - T_min)**2
@@ -310,8 +310,17 @@ class LettuceGreenhouse(gym.Env):
         self.heating_cost = float(c_r_u3 * heating)
         self.penalty = float(r_co2 + r_T + r_RH - (c_r_u2 * ventilation))
 
+        # Penalize CO2 injection while ventilating
+        r_co2_vent = -c_r_co2_vent * co2_dosing * ventilation
+
+        # Penalize heating while ventilating
+        r_coact = -c_coact * heating * ventilation
+        self.penalty = float(r_co2 + r_T + r_RH - (c_r_u2 * ventilation) + r_coact + r_co2_vent)
+
+
         # Final Reward (Equation 12)
-        reward = self.revenue + r_co2 + r_T + r_RH - (self.co2_cost + (c_r_u2 * ventilation) + self.heating_cost)
+        
+        reward = self.revenue + r_co2 + r_T + r_RH + r_coact + r_co2_vent - (self.co2_cost + (c_r_u2 * ventilation) + self.heating_cost)
 
         #print(f"reward: {reward}, incremental_growth: {incremental_growth}, co2_reward: {r_co2}, "f"temp_penalty: {r_T}, RH_penalty: {r_RH}, co2_cost: {self.co2_cost}, "f"ventilation_cost: {c_r_u2 * ventilation}, heating_cost: {self.heating_cost}")
         return reward
