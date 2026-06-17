@@ -308,7 +308,9 @@ class LettuceGreenhouse(gym.Env):
         self.revenue = float(c_r1 * incremental_growth)
         self.co2_cost = float(c_r_u1 * co2_dosing)
         self.heating_cost = float(c_r_u3 * heating)
-        self.penalty = float(r_co2 + r_T + r_RH - (c_r_u2 * ventilation))
+        self.penalty = float(r_co2 + r_T  + r_RH - (c_r_u2 * ventilation))
+
+        
 
         # Penalize CO2 injection while ventilating
         r_co2_vent = -c_r_co2_vent * co2_dosing * ventilation
