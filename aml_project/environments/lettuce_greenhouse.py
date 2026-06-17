@@ -304,13 +304,11 @@ class LettuceGreenhouse(gym.Env):
             r_RH = -c_r_RH * (RH - RH_max)**2
         else:
             r_RH = 0.0
-        
-        r_df = float(np.sum(np.abs(action - self.prev_action) * c_r_df))
 
         self.revenue = float(c_r1 * incremental_growth)
         self.co2_cost = float(c_r_u1 * co2_dosing)
         self.heating_cost = float(c_r_u3 * heating)
-        self.penalty = float(r_co2 + r_T + r_df + r_RH - (c_r_u2 * ventilation))
+        self.penalty = float(r_co2 + r_T  + r_RH - (c_r_u2 * ventilation))
 
         
 
