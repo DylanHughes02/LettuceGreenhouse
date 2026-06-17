@@ -66,7 +66,7 @@ class LettuceGreenhouse(gym.Env):
 
         # min and max measurements of the environment
         self.obs_low = np.array([0., 0.8, 15, 0], dtype=np.float32)
-        self.obs_high = np.array([300., 1.6, 20., 70.], dtype=np.float32)
+        self.obs_high = np.array([300., 1.6, 25., 70.], dtype=np.float32)
 
         # min and max actions
         self.min_action = np.array([0.,0.,0.], dtype=np.float32) 
@@ -263,8 +263,8 @@ class LettuceGreenhouse(gym.Env):
         radiation = self.d[self.timestep-1][0]
         # Dynamic Constraint Bounds 
         # These are the optimal ranges for temperature and CO2 concentration in the greenhouse.
-        T_min = 10.0 if radiation < 10 else 15.0  # Change so it adjust day/night cycle
-        T_max = 15.0 if radiation < 10 else 20.0
+        T_min = 10.0 if radiation < 10 else 15.0
+        T_max = 18.0 if radiation < 10 else 25.0  # widen upper end
         CO2_min = 0.8
         CO2_max = 1.6
         RH_max = 70

@@ -41,12 +41,12 @@ def create_trajectory_figure(nvars, L, h, c, low_state_constraints, upper_state_
 
     # plot state constraints
     if low_state_constraints is not None and upper_state_constraints is not None:
-        axes[1].hlines(low_state_constraints[1], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Lower bound')
-        axes[1].hlines(upper_state_constraints[1], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Upper bound')
-        axes[2].hlines(low_state_constraints[2], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Lower bound')
-        axes[2].hlines(upper_state_constraints[2], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Upper bound')
-        axes[3].hlines(low_state_constraints[3], x[0], x[-1], linestyle='--', linewidth=3, alpha=0.5)
-        axes[3].hlines(upper_state_constraints[3], x[0], x[-1], linestyle='--', linewidth=3, alpha=0.5)
+        axes[1].hlines(low_state_constraints[1], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Lower bound', color="red")
+        axes[1].hlines(upper_state_constraints[1], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Upper bound', color="red")
+        axes[2].hlines(low_state_constraints[2], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Lower bound', color="red")
+        axes[2].hlines(upper_state_constraints[2], x[0], x[-1], linestyle='--', linewidth=3,  alpha=0.5, label='Upper bound', color="red")
+        axes[3].hlines(low_state_constraints[3], x[0], x[-1], linestyle='--', linewidth=3, alpha=0.5, color="red")
+        axes[3].hlines(upper_state_constraints[3], x[0], x[-1], linestyle='--', linewidth=3, alpha=0.5, color="red")
 
     # set x- and y-labels and limits on x-axis     
     for i, ax in enumerate(axes):
