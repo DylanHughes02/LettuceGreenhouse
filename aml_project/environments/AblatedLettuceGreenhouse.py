@@ -7,6 +7,10 @@ import numpy as np
 
 class AblatedLettuceGreenhouse(LettuceGreenhouse):
 
+    """
+    Written largely by Claude AI
+    """
+
     # Simple daytime heuristics for each actuator (in NORMALISED [-1, 1] space)
     HEURISTIC = {
         0: lambda d: 0.5,                              # Inject CO2 at a constant moderate rate during the day, no injection at night
@@ -16,11 +20,11 @@ class AblatedLettuceGreenhouse(LettuceGreenhouse):
     }
 
     def __init__(self, active_actions: list, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(**kwargs) 
         self.active_actions = active_actions
         self.heuristic_actions = [i for i in range(3) if i not in active_actions]
 
-        # Shrink the action space to only the RL-controlled dims
+        # Shrink the action space to only the RL-controlled actuators, while the rest are controlled by heuristics
         n = len(active_actions)
         self.action_space = spaces.Box(
             low=-np.ones(n, dtype=np.float32),
